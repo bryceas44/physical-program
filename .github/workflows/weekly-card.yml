@@ -1,8 +1,8 @@
-name: Weekly Current-Week Card (ScreenshotAPI)
+name: Weekly Current-Week Card (Playwright)
 
 on:
   schedule:
-    - cron: "0 14 * * 1"
+    - cron: "0 14 * * 1"   # Every Monday 14:00 UTC
   workflow_dispatch:
 
 jobs:
@@ -12,6 +12,16 @@ jobs:
       START_DATE: "2025-08-18"
       BASE_URL: "https://bryceas44.github.io/physical-program/"
     steps:
+      - name: Set up Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+
+      - name: Install Playwright Chromium
+        run: |
+          npm i -g playwright@1
+          playwright install --with-deps chromium
+
       - name: Compute current week number 1–16
         id: calc
         run: |
@@ -24,33 +34,46 @@ jobs:
           echo "week=$week" >> $GITHUB_OUTPUT
           echo "Computed week: $week"
 
-      - name: Encode selector
-        id: enc
+      - name: Screenshot the week card
         env:
-          SEL: "#week-${{ steps.calc.outputs.week }}"
+          WEEK: ${{ steps.calc.outputs.week }}
+          URL:  ${{ env.BASE_URL }}
         run: |
-          echo "encoded=$(python3 - <<'PY'
-import os, urllib.parse
-print(urllib.parse.quote(os.environ["SEL"]))
-PY
-)" >> $GITHUB_OUTPUT
+          node - <<'JS'
+          const { chromium } = require('playwright');
+          (async () => {
+            const week = process.env.WEEK;
+            const url  = process.env.URL;
+            const sel  = `#week-${week}`;
 
-      - name: Take screenshot of the week card
-        run: |
-          curl -L "https://shot.screenshotapi.net/screenshot\
-?token=${{ secrets.SCREENSHOTAPI_TOKEN }}\
-&url=${{ env.BASE_URL }}\
-&output=image\
-&file_type=png\
-&selector=${{ steps.enc.outputs.encoded }}\
-&fresh=true\
-&delay=3000\
-&viewport=1440x2000\
-&device_scale_factor=2" \
-          --output "week-${{ steps.calc.outputs.week }}.png"
+            const browser = await chromium.launch();
+            const ctx = await browser.newContext({
+              viewport: { width: 1440, height: 2200 },
+              deviceScaleFactor: 2,
+            });
+            const page = await ctx.newPage();
 
-      - name: Post to Discord
+            await page.goto(url, { waitUntil: 'networkidle' });
+            await page.waitForTimeout(3000);
+            const el = await page.$(sel);
+            if (!el) throw new Error(`Selector not found: ${sel}`);
+
+            await el.scrollIntoViewIfNeeded();
+            await el.screenshot({ path: `week-${week}.png` });
+
+            await browser.close();
+          })().catch(e => { console.error(e); process.exit(1); });
+          JS
+
+      - name: Post PNG to Discord
         run: |
           curl -F "file1=@week-${{ steps.calc.outputs.week }}.png" \
                -F "payload_json={\"content\":\"Week ${{ steps.calc.outputs.week }} ✅\"}" \
                ${{ secrets.DISCORD_WEBHOOK }}
+
+      - name: Upload artifact (debug/verify)
+        uses: actions/upload-artifact@v4
+        with:
+          name: week-${{ steps.calc.outputs.week }}.png
+          path: week-${{ steps.calc.outputs.week }}.png
+          retention-days: 7
