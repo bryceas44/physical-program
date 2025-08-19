@@ -1,27 +1,56 @@
-name: Weekly Current-Week Card
+name: Weekly Current-Week Card (ScreenshotAPI)
 
 on:
-  workflow_dispatch:   # allows manual run
   schedule:
-    - cron: "0 13 * * 1"   # every Monday at 9 AM EST
+    - cron: "0 14 * * 1"
+  workflow_dispatch:
 
 jobs:
-  screenshot-and-post:
+  shoot-week-card:
     runs-on: ubuntu-latest
+    env:
+      START_DATE: "2025-08-18"
+      BASE_URL: "https://bryceas44.github.io/physical-program/"
     steps:
-      - name: Take screenshot with ScreenshotAPI
+      - name: Compute current week number 1–16
+        id: calc
         run: |
-          curl -X GET "https://shot.screenshotapi.net/screenshot" \
-            -G \
-            --data-urlencode "token=T228CKG-Y5Y464H-PT0JKH8-0HGM4HQ" \
-            --data-urlencode "url=https://bryceas44.github.io/physical-program/" \
-            --data-urlencode "output=image" \
-            --data-urlencode "file_type=png" \
-            --data-urlencode "start_date=2025-08-18" \
-            -o card.png
+          start=$(date -u -d "$START_DATE" +%s)
+          today=$(date -u +%s)
+          diff=$(( (today - start) / 86400 ))
+          week=$(( diff / 7 + 1 ))
+          if [ $week -lt 1 ]; then week=1; fi
+          if [ $week -gt 16 ]; then week=16; fi
+          echo "week=$week" >> $GITHUB_OUTPUT
+          echo "Computed week: $week"
+
+      - name: Encode selector
+        id: enc
+        env:
+          SEL: "#week-${{ steps.calc.outputs.week }}"
+        run: |
+          echo "encoded=$(python3 - <<'PY'
+import os, urllib.parse
+print(urllib.parse.quote(os.environ["SEL"]))
+PY
+)" >> $GITHUB_OUTPUT
+
+      - name: Take screenshot of the week card
+        run: |
+          curl -L "https://shot.screenshotapi.net/screenshot\
+?token=${{ secrets.SCREENSHOTAPI_TOKEN }}\
+&url=${{ env.BASE_URL }}\
+&output=image\
+&file_type=png\
+&selector=${{ steps.enc.outputs.encoded }}\
+&fresh=true\
+&delay=3000\
+&viewport=1440x2000\
+&device_scale_factor=2" \
+          --output "week-${{ steps.calc.outputs.week }}.png"
 
       - name: Post to Discord
         run: |
-          curl -X POST -H "Content-Type: multipart/form-data" \
-            -F "file1=@card.png" \
-            ${{ secrets.DISCORD_WEBHOOK }}
+          curl -F "file1=@week-${{ steps.calc.outputs.week }}.png" \
+               -F "payload_json={\"content\":\"Week ${{ steps.calc.outputs.week }} ✅\"}" \
+               ${{ secrets.DISCORD_WEBHOOK }}
