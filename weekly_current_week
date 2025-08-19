@@ -1,1 +1,63 @@
+name: Weekly Current-Week Card
+
+on:
+  schedule:
+    - cron: "0 14 * * 1"   # Every Monday 14:00 UTC
+  workflow_dispatch:       # Lets you run it manually now
+
+jobs:
+  shoot-week-card:
+    runs-on: ubuntu-latest
+    env:
+      # Week 1 Monday (yesterday as requested)
+      START_DATE: "2025-08-18"
+      BASE_URL: "https://bryceas44.github.io/physical-program/"
+    steps:
+      - name: Compute current week number 1–16
+        id: calc
+        shell: bash
+        run: |
+          start=$(date -u -d "$START_DATE" +%s)
+          today=$(date -u +%s)
+          diff=$(( (today - start) / 86400 ))
+          week=$(( diff / 7 + 1 ))
+          if [ $week -lt 1 ]; then week=1; fi
+          if [ $week -gt 16 ]; then week=16; fi
+          echo "week=$week" >> $GITHUB_OUTPUT
+          echo "Computed week: $week"
+
+      - name: Prepare CSS selector
+        id: selector
+        run: echo "SELECTOR=#week-${{ steps.calc.outputs.week }}" >> $GITHUB_ENV
+
+      - name: Take screenshot of the week card
+        env:
+          SELECTOR: ${{ env.SELECTOR }}
+        run: |
+          ENCODED_SELECTOR=$(python3 - <<'PY'
+import os, urllib.parse
+print(urllib.parse.quote(os.environ["SELECTOR"]))
+PY
+)
+          curl "https://shot.screenshotapi.net/screenshot\
+?token=${{ secrets.SCREENSHOTAPI_TOKEN }}\
+&url=${{ env.BASE_URL }}\
+&output=image\
+&file_type=png\
+&selector=${ENCODED_SELECTOR}\
+&delay=3000" \
+          --output "week-${{ steps.calc.outputs.week }}.png"
+
+      - name: Post to Discord
+        run: |
+          curl -F "file1=@week-${{ steps.calc.outputs.week }}.png" \
+               -F "payload_json={\"content\":\"Week ${{ steps.calc.outputs.week }} ✅\"}" \
+               ${{ secrets.DISCORD_WEBHOOK }}
+
+      - name: Upload PNG as an artifact (for verification)
+        uses: actions/upload-artifact@v4
+        with:
+          name: week-${{ steps.calc.outputs.week }}.png
+          path: week-${{ steps.calc.outputs.week }}.png
+          retention-days: 7
 
