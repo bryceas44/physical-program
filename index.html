@@ -1,0 +1,338 @@
+
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Ranger Prep — 16‑Week Calendar (Dark • Two Meals/Day)</title>
+<link rel="preconnect" href="https://cdn.jsdelivr.net" crossorigin>
+<script src="https://cdn.jsdelivr.net/npm/html2canvas@1.4.1/dist/html2canvas.min.js"></script>
+<style>
+:root{
+  --bg:#0b0c10;
+  --panel:#0f1117;
+  --card:#141922;
+  --muted:#1b2230;
+  --border:#2a3345;
+  --text:#e6eef7;
+  --sub:#9fb3c8;
+  --cyan:#45a29e;
+  --pink:#ff5ea8;
+  --yellow:#f5e663;
+  --lime:#66ff66;
+  --red:#ff6b6b;
+}
+*{box-sizing:border-box}
+html,body{margin:0;background:var(--bg);color:var(--text);font:14px/1.55 system-ui,Segoe UI,Roboto,Helvetica,Arial}
+.wrap{max-width:1200px;margin:20px auto;padding:0 16px}
+header{background:linear-gradient(135deg,var(--panel),#0e1219);border:1px solid var(--border);
+  border-radius:20px;padding:16px 18px;box-shadow:0 10px 30px rgba(0,0,0,.35),inset 0 0 0 1px rgba(255,255,255,.02)}
+h1{margin:0 0 4px 0;font-size:26px;color:var(--cyan)}
+.header-row{display:flex;gap:8px;flex-wrap:wrap;align-items:center}
+.pill{padding:8px 12px;border-radius:999px;background:var(--muted);border:1px solid var(--border);color:var(--text);font-size:12px}
+.btn{cursor:pointer;background:var(--cyan);color:#062a28;border:none;border-radius:10px;padding:8px 12px;font-weight:600}
+.btn.secondary{background:var(--pink);color:#3a0d22}
+.btn.yellow{background:var(--yellow);color:#3a3003}
+small.note{color:var(--sub)}
+
+.phase-grid{display:grid;grid-template-columns:repeat(4,1fr);gap:8px;margin:14px 0}
+.phase{background:var(--card);border:1px solid var(--border);border-radius:12px;padding:8px 10px;color:var(--sub)}
+.phase.active{outline:2px solid var(--cyan);color:var(--text)}
+
+.week{margin:18px 0 26px;background:var(--panel);border:1px solid var(--border);border-radius:18px;padding:12px 12px 16px;position:relative}
+.week.completed::after{content:"COMPLETED";position:absolute;inset:12px;display:flex;align-items:center;justify-content:center;
+  color:var(--red);font-size:32px;font-weight:800;opacity:.15;border:3px dashed var(--red);border-radius:14px;pointer-events:none}
+.week-head{display:flex;justify-content:space-between;gap:12px;align-items:center;margin-bottom:8px}
+.week-head h2{margin:0;font-size:20px;color:var(--yellow)}
+.controls{display:flex;gap:8px;align-items:center;flex-wrap:wrap}
+
+.admin{display:grid;grid-template-columns:repeat(auto-fit,minmax(230px,1fr));gap:12px;margin:10px 0 14px}
+.card{background:var(--card);border:1px solid var(--border);border-radius:14px;padding:12px;box-shadow:0 8px 22px rgba(0,0,0,.35)}
+.card h3{margin:0 0 8px;color:var(--pink);font-size:16px}
+.card ul{margin:6px 0 0 16px;padding:0}
+.card li{margin:4px 0}
+.badge{display:inline-block;border:1px solid var(--border);background:var(--muted);border-radius:999px;padding:2px 8px;margin:0 6px 6px 0;font-size:12px}
+
+.calendar{display:grid;grid-template-columns:repeat(7,1fr);gap:10px}
+.day{background:var(--card);border:1px solid var(--border);border-radius:14px;padding:10px;min-height:230px;display:flex;flex-direction:column}
+.day h4{margin:0 0 6px;font-size:13px;color:var(--cyan)}
+.section{margin:4px 0 0}
+.section b{color:var(--sub)}
+ul.clean{margin:4px 0 0 18px}
+ul.clean li{margin:2px 0}
+
+.shop{margin-top:12px}
+.chips{display:flex;flex-wrap:wrap;gap:8px}
+.chip{background:var(--muted);border:1px solid var(--border);border-radius:999px;padding:6px 10px;font-size:12px}
+
+.footer{color:var(--sub);font-size:12px;margin:18px 2px 40px}
+@media print{ .btn,.phase-grid{display:none} .week{break-inside:avoid} }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header>
+    <h1>Ranger Prep — 16‑Week Calendar</h1>
+    <div class="header-row">
+      <div class="pill">Protein target: <b>~100 g/day</b> (1.2 g/kg @ 82.6 kg)</div>
+      <div class="pill">Bananas → always with <b>2 tbsp JIF</b> (~7–8 g protein) on Tue/Thu/Sun</div>
+      <button class="btn" onclick="exportAll()">Export FULL plan as PNG</button>
+      <button class="btn secondary" onclick="window.print()">Print to PDF</button>
+    </div>
+    <div class="phase-grid">
+      <div class="phase" id="p1">Phase 1: Base (Weeks 1–4)</div>
+      <div class="phase" id="p2">Phase 2: Build (Weeks 5–8)</div>
+      <div class="phase" id="p3">Phase 3: Peak 1 (Weeks 9–12)</div>
+      <div class="phase" id="p4">Phase 4: Peak 2 (Weeks 13–16)</div>
+    </div>
+  </header>
+
+  <div id="weeks"></div>
+
+  <div class="footer">Two meals per day. Mark/unmark completion (saves locally). Export a single week or the full plan as PNG, or print to PDF.</div>
+</div>
+
+<script>
+// ---------- helpers / data ----------
+const W = 16;
+const days = ["Mon","Tue","Wed","Thu","Fri","Sat","Sun"];
+
+// Running progression
+const easyMiles = w => [3,3.5,4,4.5,4.5,5,5,5,4.5,5,5,5,4,4,4,3.5][w-1];
+const longMiles = w => [6,6.5,7,8,8.5,9,9.5,10,10,10.5,11,12,10,10,10,8][w-1];
+const ruckMiles = w => [4,4.5,5,5.5,6,6.5,7,7,7.5,8,8.5,9,8.5,8.5,8,6][w-1];
+const tempoDist = w => (w<=2?3:(w<=4?4:(w<=12?5:(w<16?5:4))));
+const tempoPace = w => (w<=2?"8:00/mi": w<=4?"7:50–7:55/mi": w<=6?"7:45–7:50/mi": w<=8?"7:40–7:45/mi": w<=10?"7:35–7:40/mi": w<=12?"7:30–7:35/mi": w<=14?"7:20–7:25/mi":"7:15–7:20/mi");
+const intervals = w => {
+  if (w===1) return "6×400 m @ ~7:30/mi; 90 s jog";
+  if (w===2) return "7×400 m @ ~7:25/mi; 90 s jog";
+  if (w===3) return "8×400 m @ ~7:20/mi; 90 s jog";
+  if (w===4) return "6×800 m @ ~7:30/mi; 2:00 jog";
+  if (w===5) return "6×800 m @ ~7:20/mi; 2:00 jog";
+  if (w===6) return "7×800 m @ ~7:15/mi; 2:00 jog";
+  if (w===7) return "8×800 m @ ~7:10–7:15/mi; 2:00 jog";
+  if (w===8) return "5×1,000 m @ ~7:10/mi; 2:30 jog";
+  if (w===9) return "4×1 mi @ 7:15→7:10/mi; 3:00 jog";
+  if (w===10) return "4×1 mi @ 7:10→7:05/mi; 3:00 jog";
+  if (w===11) return "5×1 mi @ 7:05–7:00/mi; 3:00 jog";
+  if (w===12) return "5×1 mi @ 7:05–7:00/mi; 3:00 jog";
+  if (w===13) return "5×1 mi @ 7:00/mi; 3:00 jog + 4×100 m strides";
+  if (w===14) return "6×1 mi @ 7:00/mi; 3:00 jog";
+  if (w===15) return "6×1 mi @ 6:55–7:00/mi; 3:00 jog";
+  return "3×1 mi @ 6:55–7:00/mi; 3:00 jog (taper)";
+}
+const fourTT = w => [6,8,10,11,12,13,14,15,16].includes(w);
+
+// Strength templates
+const lower = w => w<=4 ? "Back Squat 4×10 @ 60–70%; RDL 4×10; Walking Lunges 3×12/leg; Calf Raises 4×20."
+  : w<=8 ? "Back Squat 5×5 @ 70–80%; RDL 4×8; Front Squat 3×6; Calf Raises 4×15."
+  : w<=12 ? "Back Squat 4×4 @ 80–85%; RDL 4×6; Split Squat 3×8/leg; Box Jumps 4×3."
+  : "Back Squat 5×3 @ 85–90%; RDL 4×5; Split Squat 3×6/leg; Box Jumps 4×3.";
+
+const upper = w => w<=4 ? "Bench 4×10 @ 65–70%; Pull‑ups 4×max; OHP 3×10; Barbell Row 3×12; Arms: Curls 3×12 + Skull Crushers 3×12."
+  : w<=8 ? "Bench 5×5 @ 75–80%; Weighted Pull‑ups 4×6; OHP 4×6; Row 4×8; Arms: Hammer Curls 3×12 + Pushdowns 3×15."
+  : w<=12 ? "Bench 4×4 @ 80–85%; Weighted Pull‑ups 5×5; OHP 4×5; Pendlay Row 4×6; Arms: Heavy Curls 4×8 + Dips 4×10."
+  : "Bench 5×3 @ 85–90%; Weighted Pull‑ups 5×5; OHP 5×3; Row 4×5; Arms: Heavy Curls 4×6 + Weighted Dips 4×6.";
+
+const fullbody = w => w<=4 ? "Deadlift 4×8 @ 60–70%; Power Clean Tech 5×3 (light); Farmer Carries 4×50 m; Core: Plank 3×1:00."
+  : w<=8 ? "Deadlift 5×5 @ 70–80%; Power Clean 5×3; Farmer Carries 5×50 m; Core: Hanging Leg Raises 4×12."
+  : w<=12 ? "Deadlift 4×4 @ 80–85%; Power Clean 5×3; Farmer Carries 5×60 m; Core: Toes‑to‑bar 4×10."
+  : (w<16 ? "Deadlift 5×3 @ 85–90%; Power Clean 4×3; Farmer Carries 5×60 m; Core: Weighted Plank 4×:45."
+            : "TEST: 1RM — Deadlift, Squat, Bench. Light mobility otherwise.");
+
+// Progressive core circuit
+function coreCircuit(w){
+  const add = Math.floor((w-1)/2)*5;
+  const plank = 60 + add;
+  const side = 30 + Math.floor((w-1)/3)*5;
+  const hLR = 12 + Math.floor((w-1)/3);
+  const twists = 20 + Math.floor((w-1)/2)*2;
+  const flutter = 30 + Math.floor((w-1)/3)*5;
+  const bicycle = 20 + Math.floor((w-1)/3)*2;
+  return `Core ×3: Plank ${plank}s • Side Plank ${side}s/side • Hanging Leg Raises ${hLR} • Russian Twists ${twists} • Flutter Kicks ${flutter}s • Bicycle ${bicycle}`;
+}
+
+// ---------- Meals (two meals/day, integrated rules)
+const vegNames = ["spinach","broccoli","peas & carrots","stir‑fry mix","green beans","spinach","broccoli"];
+
+function mealA(i){ // First meal of the day
+  if(i===1) return "Scramble: 3 eggs + 4 oz chicken + 1/4 cup shredded cheese + Side Shake (whey 32g + 1 c veg + 1/2 c berries).";
+  if(i===3) return "Scramble bowl: 3 eggs + 4 oz lean ground beef + 1/4 cup shredded cheese over 1 c rice + Side Shake (whey 32g + 1 c veg + 1/2 c berries).";
+  if(i===5) return "Scramble: 3 eggs + ~3 oz steak strips + 1/4 cup shredded cheese + Side Shake (whey 32g + 1 c veg + 1/2 c berries).";
+  if(i===0) return "Chicken bowl: 6–8 oz chicken + 1–1.5 c rice + 1/4 cup shredded cheese + Side Shake (whey 32g + 1 c veg + 1/2 c berries).";
+  if(i===2) return "Beef bowl: 6–8 oz lean ground beef + 1–2 c rice + 1/4 cup shredded cheese + Side Shake (whey 32g + 1 c veg + 1/2 c berries).";
+  if(i===4) return "Chicken bowl: 6–8 oz chicken + 1–1.5 c rice + 1/4 cup shredded cheese + Side Shake (whey 32g + 1 c veg + 1/2 c berries).";
+  return "Beef bowl: 6–8 oz lean ground beef + 1–2 c rice + 1/4 cup shredded cheese + Side Shake (whey 32g + 1 c veg + 1/2 c berries).";
+}
+
+function mealB(i){ // Second meal of the day
+  if(i===1) return "Steak 6 oz + 1–2 c rice/pasta (pasta → add sauce + 1/4 cup shredded cheese). Dessert: Banana + 2 tbsp JIF.";
+  if(i===3) return "Pasta night: 2 c pasta + 6–8 oz ground beef + pasta sauce + 1/2 cup shredded cheese. Dessert: Banana + 2 tbsp JIF.";
+  if(i===6) return "Steak + pasta: 6 oz steak + 2 c pasta + sauce + 1/4 cup shredded cheese. Dessert: Banana + 2 tbsp JIF.";
+  if(i===4) return "Pasta bowl: 2 c pasta + 6 oz chicken + pasta sauce + 1/4–1/2 cup shredded cheese.";
+  if(i===5) return "Chicken 6–8 oz + potatoes or rice (no cheese).";
+  if(i===2) return "Chicken + pasta: 6 oz chicken + 2 c pasta + sauce + 1/4 cup shredded cheese.";
+  return "Beef + rice: 6–8 oz lean ground beef + 1–2 c rice (cheese optional).";
+}
+
+// Weekly shopping list (adjusted for two meals/day)
+const shop = {
+  Protein:["Chicken ~6 lb","Lean ground beef ~3 lb","Steak ~1.5–2 lb","Eggs 12 ct","Premier Protein (4 bottles)","Whey protein (~7 scoops/wk)","Cheese sticks (6–8, optional)"],
+  Carbs:["Rice 3 lb","Pasta 2 lb","Potatoes 5 lb","Pasta sauce 2 jars"],
+  VegFruit:["Frozen spinach 1 lb","Frozen broccoli 1 lb","Frozen stir‑fry mix 1 lb","Frozen berries 2 lb","Bananas (3–5)"],
+  DairyFats:["Shredded cheese 1 lb","JIF peanut butter 16 oz (use ~6 tbsp/wk)"],
+  Other:["Olive oil/cooking spray","Salt, pepper, garlic, chili"]
+};
+
+// ---------- render ----------
+const weeksEl = document.getElementById('weeks');
+for(let w=1; w<=W; w++){
+  const wk = document.createElement('section');
+  wk.className = 'week';
+  wk.id = 'week-'+w;
+  if(localStorage.getItem('week-'+w)==='done') wk.classList.add('completed');
+  const phaseIdx = w<=4?1 : w<=8?2 : w<=12?3 : 4;
+  document.getElementById('p'+phaseIdx).classList.add('active');
+
+  wk.innerHTML = `
+    <div class="week-head">
+      <h2>Week ${w} <small class="note">Phase ${phaseIdx}</small></h2>
+      <div class="controls">
+        <button class="btn yellow" onclick="exportWeek(${w})">Export Week ${w} as PNG</button>
+        <button class="btn complete-week" data-week="${w}">${localStorage.getItem('week-'+w)==='done' ? 'Unmark Complete' : 'Mark Complete'}</button>
+      </div>
+    </div>
+
+    <section class="admin">
+      <div class="card">
+        <h3>Protein & Fuel</h3>
+        <div class="badge">Two meals/day • Veggies in shake • JIF with bananas (Tue/Thu/Sun)</div>
+        <ul>
+          <li>Daily Side Shake is included inside a meal: whey 32 g + 1 c frozen veg + 1/2 c berries.</li>
+          <li>Scrambled eggs only on Tue/Thu/Sat; cheese added where it fits.</li>
+          <li>Hydration 3–4 L/day; electrolytes on ruck/interval/tempo days.</li>
+        </ul>
+      </div>
+      <div class="card">
+        <h3>Core Focus</h3>
+        <ul>
+          <li>${coreCircuit(w)}</li>
+          <li>Breathing: exhale during effort; brace on heavy lifts.</li>
+        </ul>
+      </div>
+      <div class="card">
+        <h3>Weekly Targets</h3>
+        <ul>
+          <li>Easy run: ${easyMiles(w)} mi • Long run: ${longMiles(w)} mi • Ruck: ${ruckMiles(w)} mi @ 45 lb</li>
+          <li>${fourTT(w) ? "Timed 4‑mile this week — record time and RPE." : "No 4‑mile TT this week."}</li>
+          <li>Strength blocks: Lower/Upper/Full per cards</li>
+        </ul>
+      </div>
+    </section>
+
+    <section class="calendar">
+      ${days.map((d,i)=>`
+        <div class="day">
+          <h4>${d}</h4>
+          <div class="section"><b>Run/Ruck:</b>
+            <ul class="clean">${i===0?`<li>Easy ${easyMiles(w)} mi @ 8:20–8:40 (Z2).</li>`:
+                               i===1?`<li>Intervals: ${intervals(w)}.</li>`:
+                               i===2?`<li>Ruck: ${ruckMiles(w)} mi @ 45 lb (15:00–16:00/mi).</li>`:
+                               i===3? (fourTT(w)? `<li>Timed 4‑mile. Cool‑down jog 1 mi.</li>`:`<li>Tempo ${tempoDist(w)} mi @ ${tempoPace(w)}.</li>`):
+                               i===4?`<li>Optional flush: 2 mi easy + 6×100 m strides.</li>`:
+                               i===5?`<li>Long run: ${longMiles(w)} mi easy steady.</li>`:
+                                     `<li>Rest / swim‑bike 30 min easy.</li>`}
+            </ul>
+          </div>
+          <div class="section"><b>Strength:</b>
+            <ul class="clean">${i===0?`<li>${lower(w)}</li><li>${coreCircuit(w)}</li>`:
+                               i===1?`<li>Arms: Curls 3×12; Skull Crushers 3×12; Hammer Curls 3×12.</li><li>${coreCircuit(w)}</li>`:
+                               i===2?`<li>${upper(w)}</li><li>${coreCircuit(w)}</li>`:
+                               i===3?`<li>Mobility 10–15 min + strides after run.</li>`:
+                               i===4?`<li>${fullbody(w)}</li>`:
+                               i===5?`<li>Mobility 15–20 min.</li>`:
+                                     `<li>Rest.</li>`}
+            </ul>
+          </div>
+          <div class="section"><b>Meals (2/day):</b>
+            <ul class="clean">
+              <li><b>Meal A:</b> ${mealA(i)}</li>
+              <li><b>Meal B:</b> ${mealB(i)}</li>
+            </ul>
+          </div>
+        </div>
+      `).join('')}
+    </section>
+
+    <section class="shop">
+      <div class="card">
+        <h3>Weekly Shopping — Two Meals/Day</h3>
+        <div class="chips">
+          ${Object.entries(shop).map(([cat,items])=>`<span class="chip">${cat}</span>`+items.map(it=>`<span class="chip">${it}</span>`).join('')).join('')}
+        </div>
+      </div>
+    </section>
+  `;
+  weeksEl.appendChild(wk);
+}
+
+// Phase highlight
+for(let w=1; w<=W; w++){
+  const phaseIdx = w<=4?1 : w<=8?2 : w<=12?3 : 4;
+  document.getElementById('p'+phaseIdx).classList.add('active');
+}
+
+// Toggle complete with persistence
+document.addEventListener('click', (e)=>{
+  const btn = e.target.closest('.complete-week');
+  if(!btn) return;
+  const week = btn.getAttribute('data-week');
+  const card = document.getElementById('week-'+week);
+  const key = 'week-'+week;
+  const done = localStorage.getItem(key)==='done';
+  if(done){
+    localStorage.removeItem(key);
+    card.classList.remove('completed');
+    btn.textContent = 'Mark Complete';
+  }else{
+    localStorage.setItem(key,'done');
+    card.classList.add('completed');
+    btn.textContent = 'Unmark Complete';
+  }
+});
+
+// Export functions
+async function exportWeek(w){
+  const node = document.getElementById('week-'+w);
+  const canvas = await html2canvas(node,{backgroundColor:null, scale:2, useCORS:true});
+  downloadCanvas(canvas, `Ranger_Week_${w}.png`);
+}
+async function exportAll(){
+  const node = document.querySelector('.wrap');
+  const canvas = await html2canvas(node,{backgroundColor:null, scale:2, useCORS:true});
+  downloadCanvas(canvas, `Ranger_16w_Full.png`);
+}
+function downloadCanvas(canvas, filename){
+  const a = document.createElement('a');
+  a.href = canvas.toDataURL('image/png');
+  a.download = filename;
+  a.click();
+}
+
+// Restore button labels on load
+window.addEventListener('load', ()=>{
+  for(let w=1; w<=W; w++){
+    const key = 'week-'+w;
+    const btn = document.querySelector(`#week-${w} .complete-week`);
+    if(!btn) continue;
+    if(localStorage.getItem(key)==='done'){
+      document.getElementById(`week-${w}`).classList.add('completed');
+      btn.textContent = 'Unmark Complete';
+    }else{
+      btn.textContent = 'Mark Complete';
+    }
+  }
+});
+</script>
+</body>
+</html>
