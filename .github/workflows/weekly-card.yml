@@ -2,108 +2,73 @@ name: Weekly Current-Week Card (ScreenshotAPI)
 
 on:
   schedule:
-    - cron: "0 14 * * 1"     # every Monday 14:00 UTC
-  workflow_dispatch:          # allows manual run
+    - cron: '0 14 * * 1'     # Every Monday 14:00 UTC
+  workflow_dispatch:          # Manual run button in Actions
 
 jobs:
-  shoot-week-card:
+  shoot_and_post:
     runs-on: ubuntu-latest
     env:
-      START_DATE: "2025-08-18"                           # Week 1 Monday
-      BASE_URL: "https://bryceas44.github.io/physical-program/"
+      START_DATE: '2025-08-18'                               # Week 1 Monday
+      BASE_URL: 'https://bryceas44.github.io/physical-program/'
     steps:
-      - name: Compute current week number 1–16
-        id: calc
+      - name: Compute week, capture PNG with selector (retry), fallback to full-page, post to Discord
+        shell: bash
+        env:
+          SCREENSHOTAPI_TOKEN: ${{ secrets.SCREENSHOTAPI_TOKEN }}
+          DISCORD_WEBHOOK: ${{ secrets.DISCORD_WEBHOOK }}
         run: |
+          set -e
+
+          # --- Compute current week number 1..16 ---
           start=$(date -u -d "$START_DATE" +%s)
           today=$(date -u +%s)
           diff=$(( (today - start) / 86400 ))
           week=$(( diff / 7 + 1 ))
-          if [ $week -lt 1 ]; then week=1; fi
-          if [ $week -gt 16 ]; then week=16; fi
-          echo "week=$week" >> $GITHUB_OUTPUT
-          echo "Computed week: $week"
+          [ $week -lt 1 ] && week=1
+          [ $week -gt 16 ] && week=16
+          echo "Week computed: $week"
 
-      - name: Encode selector "#week-N"
-        id: enc
-        env:
-          RAW_SELECTOR: "#week-${{ steps.calc.outputs.week }}"
-        run: |
-          ENCODED=$(python3 - <<'PY'
+          # --- Encode CSS selector ---
+          RAW_SELECTOR="#week-$week"
+          ENCODED_SELECTOR=$(python3 - <<PY
 import os, urllib.parse
-print(urllib.parse.quote(os.environ["RAW_SELECTOR"]))
+print(urllib.parse.quote(os.environ['RAW_SELECTOR']))
 PY
 )
-          echo "encoded=$ENCODED" >> $GITHUB_OUTPUT
-          echo "Selector encoded."
+          echo "Encoded selector: $ENCODED_SELECTOR"
 
-      - name: Screenshot (selector, first try 5s delay)
-        continue-on-error: true
-        run: |
-          curl -sSL "https://shot.screenshotapi.net/screenshot\
-?token=${{ secrets.SCREENSHOTAPI_TOKEN }}\
-&url=${{ env.BASE_URL }}\
-&output=image\
-&file_type=png\
-&selector=${{ steps.enc.outputs.encoded }}\
-&fresh=true\
-&delay=5000\
-&viewport=1440x2200\
-&device_scale_factor=2" \
-            --output "week-${{ steps.calc.outputs.week }}.png"
+          # --- Try selector (5s), then retry (8s) if tiny ---
+          url="https://shot.screenshotapi.net/screenshot?token=${SCREENSHOTAPI_TOKEN}&url=${BASE_URL}&output=image&file_type=png&selector=${ENCODED_SELECTOR}&fresh=true&delay=5000&viewport=1440x2200&device_scale_factor=2"
+          curl -sSL "$url" -o card.png || true
+          size=$(stat -c%s card.png 2>/dev/null || echo 0)
+          echo "First try size: $size"
 
-          BYTES=$(stat -c%s "week-${{ steps.calc.outputs.week }}.png" 2>/dev/null || echo 0)
-          echo "First attempt size: $BYTES bytes" | tee size1.txt
-
-      - name: Retry selector (longer delay) if tiny
-        if: ${{ always() }}
-        run: |
-          BYTES=$(cat size1.txt | awk '{print $4}')
-          if [ -z "$BYTES" ] || [ "$BYTES" -lt 50000 ]; then
-            echo "Retrying with 8s delay..."
-            curl -sSL "https://shot.screenshotapi.net/screenshot\
-?token=${{ secrets.SCREENSHOTAPI_TOKEN }}\
-&url=${{ env.BASE_URL }}\
-&output=image\
-&file_type=png\
-&selector=${{ steps.enc.outputs.encoded }}\
-&fresh=true\
-&delay=8000\
-&viewport=1440x2200\
-&device_scale_factor=2" \
-              --output "week-${{ steps.calc.outputs.week }}.png"
-          else
-            echo "Retry not needed."
+          if [ "$size" -lt 50000 ]; then
+            echo "Retrying selector with 8s delay..."
+            url="https://shot.screenshotapi.net/screenshot?token=${SCREENSHOTAPI_TOKEN}&url=${BASE_URL}&output=image&file_type=png&selector=${ENCODED_SELECTOR}&fresh=true&delay=8000&viewport=1440x2200&device_scale_factor=2"
+            curl -sSL "$url" -o card.png || true
+            size=$(stat -c%s card.png 2>/dev/null || echo 0)
+            echo "Second try size: $size"
           fi
 
-      - name: Fallback to FULL PAGE if selector still tiny
-        run: |
-          BYTES=$(stat -c%s "week-${{ steps.calc.outputs.week }}.png" 2>/dev/null || echo 0)
-          if [ -z "$BYTES" ] || [ "$BYTES" -lt 50000 ]; then
-            echo "Selector capture still small ($BYTES bytes). Using full page fallback..."
-            curl -sSL "https://shot.screenshotapi.net/screenshot\
-?token=${{ secrets.SCREENSHOTAPI_TOKEN }}\
-&url=${{ env.BASE_URL }}\
-&output=image\
-&file_type=png\
-&full_page=true\
-&fresh=true\
-&delay=8000\
-&viewport=1440x2200\
-&device_scale_factor=2" \
-              --output "week-${{ steps.calc.outputs.week }}.png"
+          # --- Fallback to full page (always gives a valid image) ---
+          if [ "$size" -lt 50000 ]; then
+            echo "Selector still small; taking FULL PAGE screenshot..."
+            url="https://shot.screenshotapi.net/screenshot?token=${SCREENSHOTAPI_TOKEN}&url=${BASE_URL}&output=image&file_type=png&full_page=true&fresh=true&delay=8000&viewport=1440x2200&device_scale_factor=2"
+            curl -sSL "$url" -o card.png
+            size=$(stat -c%s card.png)
+            echo "Full page size: $size"
           fi
-          echo "Final image size: $(stat -c%s week-${{ steps.calc.outputs.week }}.png) bytes"
 
-      - name: Post PNG to Discord
-        run: |
-          curl -F "file1=@week-${{ steps.calc.outputs.week }}.png" \
-               -F "payload_json={\"content\":\"Week ${{ steps.calc.outputs.week }} ✅\"}" \
-               ${{ secrets.DISCORD_WEBHOOK }}
+          # --- Post to Discord (inline preview) ---
+          curl -sS -F "file1=@card.png" \
+               -F "payload_json={\"content\":\"Week ${week} ✅\"}" \
+               "${DISCORD_WEBHOOK}"
 
-      - name: Upload artifact (debug/verify)
+      - name: Upload PNG as artifact (debug/verify)
         uses: actions/upload-artifact@v4
         with:
-          name: week-${{ steps.calc.outputs.week }}.png
-          path: week-${{ steps.calc.outputs.week }}.png
+          name: week.png
+          path: card.png
           retention-days: 7
