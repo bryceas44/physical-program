@@ -1,18 +1,18 @@
-name: Weekly Current-Week Card (ScreenshotAPI)
+name: Weekly Current-Week Card (ScreenshotAPI, Large)
 
 on:
   schedule:
-    - cron: '0 14 * * 1'     # Every Monday 14:00 UTC
-  workflow_dispatch:          # Manual run button
+    - cron: '0 14 * * 1'     # every Monday 14:00 UTC
+  workflow_dispatch:          # manual run from Actions
 
 jobs:
   shoot_and_post:
     runs-on: ubuntu-latest
     env:
-      START_DATE: '2025-08-18'                               # Week 1 Monday
+      START_DATE: '2025-08-18'                         # Week 1 Monday
       BASE_URL: 'https://bryceas44.github.io/physical-program/'
     steps:
-      - name: Compute week, capture PNG (retry), fallback to full-page, post to Discord
+      - name: Compute week, capture big PNG (retry), fallback to full-page, post to Discord
         shell: bash
         env:
           SCREENSHOTAPI_TOKEN: ${{ secrets.SCREENSHOTAPI_TOKEN }}
@@ -29,44 +29,48 @@ jobs:
           [ $week -gt 16 ] && week=16
           echo "Week: $week"
 
-          # --- Encode CSS selector "#week-N" (pass as CLI arg, no env) ---
+          # --- Encode CSS selector "#week-N" ---
           RAW_SELECTOR="#week-$week"
           ENCODED_SELECTOR=$(python3 -c "import urllib.parse,sys; print(urllib.parse.quote(sys.argv[1]))" "$RAW_SELECTOR")
           echo "Encoded selector: $ENCODED_SELECTOR"
 
-          # --- Try selector (5s delay) ---
-          URL="https://shot.screenshotapi.net/screenshot?token=${SCREENSHOTAPI_TOKEN}&url=${BASE_URL}&output=image&file_type=png&selector=${ENCODED_SELECTOR}&fresh=true&delay=5000&viewport=1440x2200&device_scale_factor=2"
-          curl -sSL "$URL" -o card.png || true
-          size=$(stat -c%s card.png 2>/dev/null || echo 0)
+          # Common params: large viewport + retina scale
+          VIEW='2560x3000'
+          SCALE='2'
+
+          # --- Try selector (6s delay) ---
+          URL="https://shot.screenshotapi.net/screenshot?token=${SCREENSHOTAPI_TOKEN}&url=${BASE_URL}&output=image&file_type=png&selector=${ENCODED_SELECTOR}&fresh=true&delay=6000&viewport=${VIEW}&device_scale_factor=${SCALE}"
+          curl -sSL "$URL" -o weekly-card.png || true
+          size=$(stat -c%s weekly-card.png 2>/dev/null || echo 0)
           echo "First try size: $size"
 
-          # --- Retry selector (8s delay) if small ---
-          if [ "$size" -lt 50000 ]; then
-            echo "Retrying selector with 8s delay..."
-            URL="https://shot.screenshotapi.net/screenshot?token=${SCREENSHOTAPI_TOKEN}&url=${BASE_URL}&output=image&file_type=png&selector=${ENCODED_SELECTOR}&fresh=true&delay=8000&viewport=1440x2200&device_scale_factor=2"
-            curl -sSL "$URL" -o card.png || true
-            size=$(stat -c%s card.png 2>/dev/null || echo 0)
+          # --- Retry selector (9s delay) if small (<100 KB) ---
+          if [ "$size" -lt 100000 ]; then
+            echo "Retrying selector with 9s delay..."
+            URL="https://shot.screenshotapi.net/screenshot?token=${SCREENSHOTAPI_TOKEN}&url=${BASE_URL}&output=image&file_type=png&selector=${ENCODED_SELECTOR}&fresh=true&delay=9000&viewport=${VIEW}&device_scale_factor=${SCALE}"
+            curl -sSL "$URL" -o weekly-card.png || true
+            size=$(stat -c%s weekly-card.png 2>/dev/null || echo 0)
             echo "Second try size: $size"
           fi
 
-          # --- Fallback to FULL PAGE if still small ---
-          if [ "$size" -lt 50000 ]; then
+          # --- Fallback to FULL PAGE (always yields a valid big image) ---
+          if [ "$size" -lt 100000 ]; then
             echo "Selector still small; taking FULL PAGE screenshot..."
-            URL="https://shot.screenshotapi.net/screenshot?token=${SCREENSHOTAPI_TOKEN}&url=${BASE_URL}&output=image&file_type=png&full_page=true&fresh=true&delay=8000&viewport=1440x2200&device_scale_factor=2"
-            curl -sSL "$URL" -o card.png
-            size=$(stat -c%s card.png)
+            URL="https://shot.screenshotapi.net/screenshot?token=${SCREENSHOTAPI_TOKEN}&url=${BASE_URL}&output=image&file_type=png&full_page=true&fresh=true&delay=9000&viewport=${VIEW}&device_scale_factor=${SCALE}"
+            curl -sSL "$URL" -o weekly-card.png
+            size=$(stat -c%s weekly-card.png)
             echo "Full page size: $size"
           fi
 
           # --- Post to Discord (inline preview) ---
-          curl -sS -F "file1=@card.png" \
-                   -F "payload_json={\"content\":\"Week ${week} ✅\"}" \
+          curl -sS -F "file1=@weekly-card.png" \
+                   -F "payload_json={\"content\":\"Week ${week} ✅ (2560px wide)\"}" \
                    "${DISCORD_WEBHOOK}"
 
       - name: Upload PNG artifact (verify)
         uses: actions/upload-artifact@v4
         with:
-          name: week.png
-          path: card.png
+          name: weekly-card.png
+          path: weekly-card.png
           retention-days: 7
 
