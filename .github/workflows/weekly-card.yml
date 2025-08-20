@@ -3,7 +3,7 @@ name: Weekly Current-Week Card (ScreenshotAPI)
 on:
   schedule:
     - cron: '0 14 * * 1'     # Every Monday 14:00 UTC
-  workflow_dispatch:          # Manual run button in Actions
+  workflow_dispatch:          # Manual run button
 
 jobs:
   shoot_and_post:
@@ -12,11 +12,11 @@ jobs:
       START_DATE: '2025-08-18'                               # Week 1 Monday
       BASE_URL: 'https://bryceas44.github.io/physical-program/'
     steps:
-      - name: Compute week, capture PNG with selector (retry), fallback to full-page, post to Discord
+      - name: Compute week, capture PNG (retry), fallback to full-page, post to Discord
         shell: bash
         env:
           SCREENSHOTAPI_TOKEN: ${{ secrets.SCREENSHOTAPI_TOKEN }}
-          DISCORD_WEBHOOK: ${{ secrets.DISCORD_WEBHOOK }}
+          DISCORD_WEBHOOK:     ${{ secrets.DISCORD_WEBHOOK }}
         run: |
           set -e
 
@@ -27,46 +27,43 @@ jobs:
           week=$(( diff / 7 + 1 ))
           [ $week -lt 1 ] && week=1
           [ $week -gt 16 ] && week=16
-          echo "Week computed: $week"
+          echo "Week: $week"
 
-          # --- Encode CSS selector ---
+          # --- Encode CSS selector "#week-N" ---
           RAW_SELECTOR="#week-$week"
-          ENCODED_SELECTOR=$(python3 - <<PY
-import os, urllib.parse
-print(urllib.parse.quote(os.environ['RAW_SELECTOR']))
-PY
-)
+          ENCODED_SELECTOR=$(python3 -c "import os,urllib.parse; print(urllib.parse.quote(os.environ['RAW_SELECTOR']))")
           echo "Encoded selector: $ENCODED_SELECTOR"
 
-          # --- Try selector (5s), then retry (8s) if tiny ---
-          url="https://shot.screenshotapi.net/screenshot?token=${SCREENSHOTAPI_TOKEN}&url=${BASE_URL}&output=image&file_type=png&selector=${ENCODED_SELECTOR}&fresh=true&delay=5000&viewport=1440x2200&device_scale_factor=2"
-          curl -sSL "$url" -o card.png || true
+          # --- Try selector (5s delay) ---
+          URL="https://shot.screenshotapi.net/screenshot?token=${SCREENSHOTAPI_TOKEN}&url=${BASE_URL}&output=image&file_type=png&selector=${ENCODED_SELECTOR}&fresh=true&delay=5000&viewport=1440x2200&device_scale_factor=2"
+          curl -sSL "$URL" -o card.png || true
           size=$(stat -c%s card.png 2>/dev/null || echo 0)
           echo "First try size: $size"
 
+          # --- Retry selector (8s delay) if small ---
           if [ "$size" -lt 50000 ]; then
             echo "Retrying selector with 8s delay..."
-            url="https://shot.screenshotapi.net/screenshot?token=${SCREENSHOTAPI_TOKEN}&url=${BASE_URL}&output=image&file_type=png&selector=${ENCODED_SELECTOR}&fresh=true&delay=8000&viewport=1440x2200&device_scale_factor=2"
-            curl -sSL "$url" -o card.png || true
+            URL="https://shot.screenshotapi.net/screenshot?token=${SCREENSHOTAPI_TOKEN}&url=${BASE_URL}&output=image&file_type=png&selector=${ENCODED_SELECTOR}&fresh=true&delay=8000&viewport=1440x2200&device_scale_factor=2"
+            curl -sSL "$URL" -o card.png || true
             size=$(stat -c%s card.png 2>/dev/null || echo 0)
             echo "Second try size: $size"
           fi
 
-          # --- Fallback to full page (always gives a valid image) ---
+          # --- Fallback to FULL PAGE if still small ---
           if [ "$size" -lt 50000 ]; then
             echo "Selector still small; taking FULL PAGE screenshot..."
-            url="https://shot.screenshotapi.net/screenshot?token=${SCREENSHOTAPI_TOKEN}&url=${BASE_URL}&output=image&file_type=png&full_page=true&fresh=true&delay=8000&viewport=1440x2200&device_scale_factor=2"
-            curl -sSL "$url" -o card.png
+            URL="https://shot.screenshotapi.net/screenshot?token=${SCREENSHOTAPI_TOKEN}&url=${BASE_URL}&output=image&file_type=png&full_page=true&fresh=true&delay=8000&viewport=1440x2200&device_scale_factor=2"
+            curl -sSL "$URL" -o card.png
             size=$(stat -c%s card.png)
             echo "Full page size: $size"
           fi
 
           # --- Post to Discord (inline preview) ---
           curl -sS -F "file1=@card.png" \
-               -F "payload_json={\"content\":\"Week ${week} ✅\"}" \
-               "${DISCORD_WEBHOOK}"
+                   -F "payload_json={\"content\":\"Week ${week} ✅\"}" \
+                   "${DISCORD_WEBHOOK}"
 
-      - name: Upload PNG as artifact (debug/verify)
+      - name: Upload PNG artifact (verify)
         uses: actions/upload-artifact@v4
         with:
           name: week.png
