@@ -29,9 +29,9 @@ jobs:
           [ $week -gt 16 ] && week=16
           echo "Week: $week"
 
-          # --- Encode CSS selector "#week-N" ---
+          # --- Encode CSS selector "#week-N" (pass as CLI arg, no env) ---
           RAW_SELECTOR="#week-$week"
-          ENCODED_SELECTOR=$(python3 -c "import os,urllib.parse; print(urllib.parse.quote(os.environ['RAW_SELECTOR']))")
+          ENCODED_SELECTOR=$(python3 -c "import urllib.parse,sys; print(urllib.parse.quote(sys.argv[1]))" "$RAW_SELECTOR")
           echo "Encoded selector: $ENCODED_SELECTOR"
 
           # --- Try selector (5s delay) ---
@@ -69,3 +69,4 @@ jobs:
           name: week.png
           path: card.png
           retention-days: 7
+
